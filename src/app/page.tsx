@@ -223,6 +223,21 @@ const compatibilityChart: ZodiacChart[] = [
   }
 ];
 
+const zodiacDateRanges: Record<string, string> = {
+  Aries: 'Mar 21 – Apr 19',
+  Taurus: 'Apr 20 – May 20',
+  Gemini: 'May 21 – Jun 20',
+  Cancer: 'Jun 21 – Jul 22',
+  Leo: 'Jul 23 – Aug 22',
+  Virgo: 'Aug 23 – Sep 22',
+  Libra: 'Sep 23 – Oct 22',
+  Scorpio: 'Oct 23 – Nov 21',
+  Sagittarius: 'Nov 22 – Dec 21',
+  Capricorn: 'Dec 22 – Jan 19',
+  Aquarius: 'Jan 20 – Feb 18',
+  Pisces: 'Feb 19 – Mar 20'
+};
+
 export default function Home() {
   return (
     <div className='relative min-h-screen overflow-hidden px-6 py-14 sm:px-10'>
@@ -253,6 +268,9 @@ export default function Home() {
               <h2 className='text-2xl font-semibold text-zinc-900 dark:text-zinc-100'>
                 {entry.symbol} {entry.sign}
               </h2>
+              <p className='mt-1 text-sm text-zinc-600 dark:text-zinc-300'>
+                {zodiacDateRanges[entry.sign]}
+              </p>
               <ol className='mt-4 space-y-2'>
                 {entry.matches.map((match, index) => (
                   <li
