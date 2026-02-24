@@ -13,6 +13,7 @@ import {
   SunPosition,
   e_tilt
 } from 'astronomy-engine';
+import AdUnit from '@/components/AdUnit';
 
 type ZodiacChart = {
   symbol: string;
@@ -732,6 +733,7 @@ export default function Home() {
     hidden: 'hidden',
     block: 'grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-3'
   };
+  const adsenseSlotMain = process.env.NEXT_PUBLIC_ADSENSE_SLOT_MAIN;
 
   const navigateToSection = (sectionId: string) => {
     setActiveSectionId(sectionId);
@@ -1280,6 +1282,14 @@ export default function Home() {
           id='all-signs'
           className={`scroll-mt-28 ${allSignsLayoutClassByVisibility[sectionVisibilityClass['all-signs']]}`}
         >
+          {adsenseSlotMain ? (
+            <div className='sm:col-span-2 xl:col-span-3'>
+              <div className='rounded-3xl border border-white/35 bg-white/60 p-4 shadow-sm backdrop-blur-md dark:border-white/15 dark:bg-zinc-900/50'>
+                <AdUnit slot={adsenseSlotMain} />
+              </div>
+            </div>
+          ) : null}
+
           {compatibilityChart.map((entry) => (
             <article
               key={entry.sign}
