@@ -691,6 +691,53 @@ export default function Home() {
   const [chartTwoBirthDate, setChartTwoBirthDate] = useState<string>('');
   const [chartTwoBirthTime, setChartTwoBirthTime] = useState<string>('');
   const [chartTwoBirthPlace, setChartTwoBirthPlace] = useState<string>('');
+  const [activeSectionId, setActiveSectionId] = useState<string>('sign-compat');
+
+  const navigationItems = [
+    {
+      id: 'sign-compat',
+      icon: '✨',
+      title: 'Sign Compatibility',
+      description: 'Quick zodiac sign-to-sign compatibility check.'
+    },
+    {
+      id: 'birth-chart',
+      icon: '🌞',
+      title: 'Birth Chart',
+      description: 'Generate Sun, Moon, Rising, and Venus from birth details.'
+    },
+    {
+      id: 'birth-chart-compat',
+      icon: '💞',
+      title: 'Birth Chart Match',
+      description: 'Compare two charts using astronomical placements.'
+    },
+    {
+      id: 'all-signs',
+      icon: '🔮',
+      title: 'Full Zodiac Rank',
+      description: 'Browse the complete compatibility order for each sign.'
+    }
+  ] as const;
+
+  const sectionVisibilityClass: Record<string, 'hidden' | 'block'> = {
+    'birth-chart': 'hidden',
+    'birth-chart-compat': 'hidden',
+    'sign-compat': 'hidden',
+    'all-signs': 'hidden'
+  };
+  sectionVisibilityClass[activeSectionId] = 'block';
+
+  const allSignsLayoutClassByVisibility: Record<'hidden' | 'block', string> = {
+    hidden: 'hidden',
+    block: 'grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-3'
+  };
+
+  const navigateToSection = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    const target = document.getElementById(sectionId);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const singleGeocodedPlace = useGeocodedPlace(singleBirthPlace);
   const firstGeocodedPlace = useGeocodedPlace(chartOneBirthPlace);
@@ -793,6 +840,48 @@ export default function Home() {
         </header>
 
         <section className='fade-in-up rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50'>
+          <p className='text-xs font-semibold tracking-[0.22em] text-violet-700 dark:text-violet-300'>
+            START HERE
+          </p>
+          <h2 className='mt-2 text-xl font-semibold text-zinc-900 sm:text-2xl dark:text-zinc-100'>
+            Choose Your Cosmic Path
+          </h2>
+          <p className='mt-2 text-sm text-zinc-600 dark:text-zinc-300'>
+            Pick one option and jump directly to that experience.
+          </p>
+
+          <div className='mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2'>
+            {navigationItems.map((item) => (
+              <button
+                key={item.id}
+                type='button'
+                onClick={() => navigateToSection(item.id)}
+                className={`tap-soft zodiac-card flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition ${
+                  activeSectionId === item.id
+                    ? 'border-violet-400/70 bg-violet-100/60 dark:border-violet-300/60 dark:bg-violet-950/30'
+                    : 'border-white/40 bg-white/80 dark:border-white/15 dark:bg-zinc-800/75'
+                }`}
+              >
+                <span className='inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/85 text-base dark:bg-zinc-900/80'>
+                  {item.icon}
+                </span>
+                <span>
+                  <span className='block text-sm font-semibold text-zinc-900 dark:text-zinc-100'>
+                    {item.title}
+                  </span>
+                  <span className='mt-1 block text-xs leading-5 text-zinc-600 dark:text-zinc-300'>
+                    {item.description}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section
+          id='birth-chart'
+          className={`fade-in-up scroll-mt-28 rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50 ${sectionVisibilityClass['birth-chart']}`}
+        >
           <h2 className='text-xl font-semibold text-zinc-900 sm:text-2xl dark:text-zinc-100'>
             Birth Chart Calculator
           </h2>
@@ -889,7 +978,10 @@ export default function Home() {
           )}
         </section>
 
-        <section className='fade-in-up rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50'>
+        <section
+          id='birth-chart-compat'
+          className={`fade-in-up scroll-mt-28 rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50 ${sectionVisibilityClass['birth-chart-compat']}`}
+        >
           <h2 className='text-xl font-semibold text-zinc-900 sm:text-2xl dark:text-zinc-100'>
             Birth Chart Compatibility
           </h2>
@@ -1068,7 +1160,10 @@ export default function Home() {
           )}
         </section>
 
-        <section className='fade-in-up rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50'>
+        <section
+          id='sign-compat'
+          className={`fade-in-up scroll-mt-28 rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50 ${sectionVisibilityClass['sign-compat']}`}
+        >
           <h2 className='text-xl font-semibold text-zinc-900 sm:text-2xl dark:text-zinc-100'>
             Check Two Signs
           </h2>
@@ -1181,7 +1276,10 @@ export default function Home() {
           ) : null}
         </section>
 
-        <section className='grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 xl:grid-cols-3'>
+        <section
+          id='all-signs'
+          className={`scroll-mt-28 ${allSignsLayoutClassByVisibility[sectionVisibilityClass['all-signs']]}`}
+        >
           {compatibilityChart.map((entry) => (
             <article
               key={entry.sign}
