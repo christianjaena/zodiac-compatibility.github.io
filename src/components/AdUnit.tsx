@@ -2,12 +2,6 @@
 
 import { useEffect, useRef } from 'react';
 
-declare global {
-  interface GlobalThis {
-    adsbygoogle: unknown[];
-  }
-}
-
 type AdUnitProps = {
   slot: string;
   className?: string;
@@ -46,8 +40,11 @@ export default function AdUnit({ slot, className }: Readonly<AdUnitProps>) {
       }
 
       try {
-        globalThis.adsbygoogle = globalThis.adsbygoogle || [];
-        globalThis.adsbygoogle.push({});
+        const adsGlobal = globalThis as typeof globalThis & {
+          adsbygoogle?: unknown[];
+        };
+        adsGlobal.adsbygoogle = adsGlobal.adsbygoogle || [];
+        adsGlobal.adsbygoogle.push({});
         adElement.dataset.adRequestDone = 'true';
       } catch {
         return;
