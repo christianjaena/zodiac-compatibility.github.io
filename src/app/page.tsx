@@ -1,11 +1,47 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Body,
+  DEG2RAD,
+  Ecliptic,
+  EclipticGeoMoon,
+  GeoVector,
+  MakeTime,
+  RAD2DEG,
+  SiderealTime,
+  SunPosition,
+  e_tilt
+} from 'astronomy-engine';
 
 type ZodiacChart = {
   symbol: string;
   sign: string;
   matches: string[];
+};
+
+type BirthChartResult = {
+  sun: string;
+  moon: string;
+  rising: string;
+  venus: string;
+};
+
+type GeoLocation = {
+  displayName: string;
+  latitude: number;
+  longitude: number;
+  timezone: string;
+};
+
+type BirthChartCompatibilityResult = {
+  chartOne: BirthChartResult;
+  chartTwo: BirthChartResult;
+  percentage: number;
+  level: string;
+  barToneClass: string;
+  strengths: string;
+  weaknesses: string;
 };
 
 const compatibilityChart: ZodiacChart[] = [
@@ -251,6 +287,111 @@ const zodiacSymbolBySign = compatibilityChart.reduce<Record<string, string>>(
   {}
 );
 
+const zodiacElementBySign: Record<string, string> = {
+  Aries: 'Fire',
+  Taurus: 'Earth',
+  Gemini: 'Air',
+  Cancer: 'Water',
+  Leo: 'Fire',
+  Virgo: 'Earth',
+  Libra: 'Air',
+  Scorpio: 'Water',
+  Sagittarius: 'Fire',
+  Capricorn: 'Earth',
+  Aquarius: 'Air',
+  Pisces: 'Water'
+};
+
+const geocodePlace = async (place: string): Promise<GeoLocation | null> => {
+  const query = place.trim();
+
+  if (!query) {
+    return null;
+  }
+
+  const response = await fetch(
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+      query
+    )}&count=1&language=en&format=json`
+  );
+
+  if (!response.ok) {
+    throw new Error('Unable to geocode this place');
+  }
+
+  const data = (await response.json()) as {
+    results?: Array<{
+      name: string;
+      admin1?: string;
+      country?: string;
+      latitude: number;
+      longitude: number;
+      timezone?: string;
+    }>;
+  };
+
+  const topResult = data.results?.[0];
+  if (!topResult) {
+    return null;
+  }
+
+  return {
+    displayName: [topResult.name, topResult.admin1, topResult.country]
+      .filter(Boolean)
+      .join(', '),
+    latitude: topResult.latitude,
+    longitude: topResult.longitude,
+    timezone: topResult.timezone ?? 'UTC'
+  };
+};
+
+const useGeocodedPlace = (place: string) => {
+  const placeQuery = place.trim();
+  const [location, setLocation] = useState<GeoLocation | null>(null);
+  const [status, setStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
+
+  useEffect(() => {
+    if (!placeQuery) {
+      return;
+    }
+
+    let isActive = true;
+    const timer = setTimeout(async () => {
+      setStatus('loading');
+
+      try {
+        const geocoded = await geocodePlace(placeQuery);
+        if (!isActive) {
+          return;
+        }
+
+        setLocation(geocoded);
+        setStatus(geocoded ? 'success' : 'error');
+      } catch {
+        if (!isActive) {
+          return;
+        }
+
+        setLocation(null);
+        setStatus('error');
+      }
+    }, 350);
+
+    return () => {
+      isActive = false;
+      clearTimeout(timer);
+    };
+  }, [placeQuery]);
+
+  if (!placeQuery) {
+    return { location: null, status: 'idle' as const };
+  }
+
+  return { location, status };
+};
+
 const rankToPercent = (rank: number) => {
   return Math.round(((13 - rank) / 12) * 100);
 };
@@ -326,9 +467,266 @@ const getCompatibilityLevel = (percentage: number) => {
   };
 };
 
+const parseDateParts = (dateValue: string) => {
+  const [yearValue, monthValue, dayValue] = dateValue.split('-').map(Number);
+
+  if (!yearValue || !monthValue || !dayValue) {
+    return null;
+  }
+
+  return { year: yearValue, month: monthValue, day: dayValue };
+};
+
+const parseTimeParts = (timeValue: string) => {
+  const [hourValue, minuteValue] = timeValue.split(':').map(Number);
+
+  if (Number.isNaN(hourValue) || Number.isNaN(minuteValue)) {
+    return null;
+  }
+
+  return { hour: hourValue, minute: minuteValue };
+};
+
+const normalizeDegrees = (degrees: number) => {
+  const modded = degrees % 360;
+  return modded < 0 ? modded + 360 : modded;
+};
+
+const signFromLongitude = (longitude: number) => {
+  const normalized = normalizeDegrees(longitude);
+  const signIndex = Math.floor(normalized / 30) % 12;
+  return zodiacSigns[signIndex];
+};
+
+const getTimeZoneOffsetMillis = (date: Date, timeZone: string) => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  });
+
+  const parts = formatter.formatToParts(date);
+  const values = parts.reduce<Record<string, string>>((accumulator, part) => {
+    if (part.type !== 'literal') {
+      accumulator[part.type] = part.value;
+    }
+    return accumulator;
+  }, {});
+
+  const asUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second)
+  );
+
+  return asUtc - date.getTime();
+};
+
+const zonedDateTimeToUtc = (
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string
+) => {
+  let utcMillis = Date.UTC(year, month - 1, day, hour, minute, 0);
+
+  for (let index = 0; index < 3; index += 1) {
+    const offset = getTimeZoneOffsetMillis(new Date(utcMillis), timeZone);
+    utcMillis = Date.UTC(year, month - 1, day, hour, minute, 0) - offset;
+  }
+
+  return new Date(utcMillis);
+};
+
+const buildBirthChart = (
+  birthDate: string,
+  birthTime: string,
+  birthLocation: GeoLocation | null
+): BirthChartResult | null => {
+  const dateParts = parseDateParts(birthDate);
+  const timeParts = parseTimeParts(birthTime);
+
+  if (!dateParts || !timeParts || !birthLocation) {
+    return null;
+  }
+
+  const { year, month, day } = dateParts;
+  const { hour, minute } = timeParts;
+  const utcDate = zonedDateTimeToUtc(
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    birthLocation.timezone
+  );
+  const astroTime = MakeTime(utcDate);
+
+  const sunLongitude = normalizeDegrees(SunPosition(astroTime).elon);
+  const moonLongitude = normalizeDegrees(EclipticGeoMoon(astroTime).lon);
+  const venusLongitude = normalizeDegrees(
+    Ecliptic(GeoVector(Body.Venus, astroTime, true)).elon
+  );
+
+  const trueObliquityRad = e_tilt(astroTime).tobl * DEG2RAD;
+  const latitudeRad = birthLocation.latitude * DEG2RAD;
+  const localSiderealDegrees = normalizeDegrees(
+    SiderealTime(astroTime) * 15 + birthLocation.longitude
+  );
+  const localSiderealRad = localSiderealDegrees * DEG2RAD;
+
+  const ascendantLongitude = normalizeDegrees(
+    Math.atan2(
+      -Math.cos(localSiderealRad),
+      Math.sin(localSiderealRad) * Math.cos(trueObliquityRad) +
+        Math.tan(latitudeRad) * Math.sin(trueObliquityRad)
+    ) *
+      RAD2DEG +
+      180
+  );
+
+  return {
+    sun: signFromLongitude(sunLongitude),
+    moon: signFromLongitude(moonLongitude),
+    rising: signFromLongitude(ascendantLongitude),
+    venus: signFromLongitude(venusLongitude)
+  };
+};
+
+const elementScore = (leftSign: string, rightSign: string) => {
+  const leftElement = zodiacElementBySign[leftSign];
+  const rightElement = zodiacElementBySign[rightSign];
+
+  if (leftElement === rightElement) {
+    return 1;
+  }
+
+  const harmonies = new Set([
+    'Fire-Air',
+    'Air-Fire',
+    'Earth-Water',
+    'Water-Earth'
+  ]);
+  const pair = `${leftElement}-${rightElement}`;
+
+  if (harmonies.has(pair)) {
+    return 0.8;
+  }
+
+  return 0.45;
+};
+
+const buildBirthChartCompatibility = (
+  chartOne: BirthChartResult,
+  chartTwo: BirthChartResult
+): BirthChartCompatibilityResult => {
+  const sunScore = elementScore(chartOne.sun, chartTwo.sun);
+  const moonScore = elementScore(chartOne.moon, chartTwo.moon);
+  const risingScore = elementScore(chartOne.rising, chartTwo.rising);
+  const venusScore = elementScore(chartOne.venus, chartTwo.venus);
+  const crossScore =
+    (elementScore(chartOne.sun, chartTwo.moon) +
+      elementScore(chartTwo.sun, chartOne.moon)) /
+    2;
+
+  const weighted =
+    sunScore * 28 +
+    moonScore * 22 +
+    risingScore * 16 +
+    venusScore * 20 +
+    crossScore * 14;
+  const percentage = Math.max(0, Math.min(100, Math.round(weighted)));
+  const compatibilityLevel = getCompatibilityLevel(percentage);
+
+  let strengths =
+    'There are meaningful growth opportunities when both partners stay patient and intentional.';
+  if (percentage >= 75) {
+    strengths =
+      'Strong emotional chemistry and complementary life rhythm across core placements.';
+  } else if (percentage >= 55) {
+    strengths =
+      'Good potential with shared values in key placements, especially with consistent communication.';
+  }
+
+  let weaknesses =
+    'Different emotional and practical needs may require extra compromise and conflict management.';
+  if (percentage >= 75) {
+    weaknesses =
+      'Intensity may lead to high expectations, so personal space and grounded communication remain important.';
+  } else if (percentage >= 55) {
+    weaknesses =
+      'Differences in emotional processing can cause occasional friction without clear boundaries.';
+  }
+
+  return {
+    chartOne,
+    chartTwo,
+    percentage,
+    level: compatibilityLevel.label,
+    barToneClass: compatibilityLevel.barToneClass,
+    strengths,
+    weaknesses
+  };
+};
+
 export default function Home() {
   const [firstSign, setFirstSign] = useState<string>(zodiacSigns[0]);
   const [secondSign, setSecondSign] = useState<string>(zodiacSigns[1]);
+  const [singleBirthDate, setSingleBirthDate] = useState<string>('');
+  const [singleBirthTime, setSingleBirthTime] = useState<string>('');
+  const [singleBirthPlace, setSingleBirthPlace] = useState<string>('');
+  const [chartOneBirthDate, setChartOneBirthDate] = useState<string>('');
+  const [chartOneBirthTime, setChartOneBirthTime] = useState<string>('');
+  const [chartOneBirthPlace, setChartOneBirthPlace] = useState<string>('');
+  const [chartTwoBirthDate, setChartTwoBirthDate] = useState<string>('');
+  const [chartTwoBirthTime, setChartTwoBirthTime] = useState<string>('');
+  const [chartTwoBirthPlace, setChartTwoBirthPlace] = useState<string>('');
+
+  const singleGeocodedPlace = useGeocodedPlace(singleBirthPlace);
+  const firstGeocodedPlace = useGeocodedPlace(chartOneBirthPlace);
+  const secondGeocodedPlace = useGeocodedPlace(chartTwoBirthPlace);
+
+  const birthChart = useMemo(() => {
+    return buildBirthChart(
+      singleBirthDate,
+      singleBirthTime,
+      singleGeocodedPlace.location
+    );
+  }, [singleBirthDate, singleBirthTime, singleGeocodedPlace.location]);
+
+  const chartOne = useMemo(() => {
+    return buildBirthChart(
+      chartOneBirthDate,
+      chartOneBirthTime,
+      firstGeocodedPlace.location
+    );
+  }, [chartOneBirthDate, chartOneBirthTime, firstGeocodedPlace.location]);
+
+  const chartTwo = useMemo(() => {
+    return buildBirthChart(
+      chartTwoBirthDate,
+      chartTwoBirthTime,
+      secondGeocodedPlace.location
+    );
+  }, [chartTwoBirthDate, chartTwoBirthTime, secondGeocodedPlace.location]);
+
+  const birthChartCompatibility = useMemo(() => {
+    if (!chartOne || !chartTwo) {
+      return null;
+    }
+
+    return buildBirthChartCompatibility(chartOne, chartTwo);
+  }, [chartOne, chartTwo]);
 
   const compatibilityResult = useMemo(() => {
     if (!firstSign || !secondSign) {
@@ -393,6 +791,282 @@ export default function Home() {
             to most challenging connection.
           </p>
         </header>
+
+        <section className='fade-in-up rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50'>
+          <h2 className='text-xl font-semibold text-zinc-900 sm:text-2xl dark:text-zinc-100'>
+            Birth Chart Calculator
+          </h2>
+          <p className='mt-2 text-sm text-zinc-600 dark:text-zinc-300'>
+            Enter birth date, time, and place to generate an instant chart.
+          </p>
+          <div className='mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4'>
+            <label className='text-sm text-zinc-700 dark:text-zinc-200'>
+              <span className='mb-2 block font-medium'>Birthday</span>
+              <input
+                type='date'
+                value={singleBirthDate}
+                onChange={(event) => setSingleBirthDate(event.target.value)}
+                className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-zinc-900 outline-none transition focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100'
+              />
+            </label>
+
+            <label className='text-sm text-zinc-700 dark:text-zinc-200'>
+              <span className='mb-2 block font-medium'>Birth time</span>
+              <input
+                type='time'
+                value={singleBirthTime}
+                onChange={(event) => setSingleBirthTime(event.target.value)}
+                className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-zinc-900 outline-none transition focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100'
+              />
+            </label>
+
+            <label className='text-sm text-zinc-700 dark:text-zinc-200'>
+              <span className='mb-2 block font-medium'>Birth place</span>
+              <input
+                type='text'
+                value={singleBirthPlace}
+                onChange={(event) => setSingleBirthPlace(event.target.value)}
+                placeholder='City, Country'
+                className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-zinc-900 outline-none transition placeholder:text-zinc-500 focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100 dark:placeholder:text-zinc-400'
+              />
+            </label>
+          </div>
+
+          {singleGeocodedPlace.status === 'loading' ? (
+            <p className='mt-3 text-xs text-zinc-500 dark:text-zinc-400'>
+              Resolving place coordinates...
+            </p>
+          ) : null}
+          {singleGeocodedPlace.status === 'success' &&
+          singleGeocodedPlace.location ? (
+            <p className='mt-3 text-xs text-zinc-500 dark:text-zinc-400'>
+              Using: {singleGeocodedPlace.location.displayName} (
+              {singleGeocodedPlace.location.latitude.toFixed(3)},{' '}
+              {singleGeocodedPlace.location.longitude.toFixed(3)}) ·{' '}
+              {singleGeocodedPlace.location.timezone}
+            </p>
+          ) : null}
+          {singleGeocodedPlace.status === 'error' ? (
+            <p className='mt-3 text-xs text-rose-600 dark:text-rose-300'>
+              Place not found. Try a clearer format like &quot;City,
+              Country&quot;.
+            </p>
+          ) : null}
+
+          {birthChart ? (
+            <div className='fade-in-up mt-5 rounded-2xl border border-white/45 bg-white/80 p-4 dark:border-white/10 dark:bg-zinc-800/75'>
+              <div className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
+                {(
+                  [
+                    ['Sun', birthChart.sun],
+                    ['Moon', birthChart.moon],
+                    ['Rising', birthChart.rising],
+                    ['Venus', birthChart.venus]
+                  ] as const
+                ).map(([label, sign]) => (
+                  <div
+                    key={label}
+                    className='zodiac-card tap-soft rounded-xl bg-white/85 px-3 py-3 text-center dark:bg-zinc-900/75'
+                  >
+                    <p className='text-xs font-medium uppercase tracking-[0.12em] text-zinc-500 dark:text-zinc-400'>
+                      {label}
+                    </p>
+                    <p className='mt-1 text-lg font-semibold text-zinc-900 dark:text-zinc-100'>
+                      {zodiacSymbolBySign[sign]} {sign}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <p className='mt-3 text-xs text-zinc-500 dark:text-zinc-400'>
+                Ephemeris-based tropical chart using geocoded coordinates and
+                local timezone conversion to UTC.
+              </p>
+            </div>
+          ) : (
+            <p className='mt-4 text-sm text-zinc-600 dark:text-zinc-300'>
+              Fill all three fields to generate the chart.
+            </p>
+          )}
+        </section>
+
+        <section className='fade-in-up rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50'>
+          <h2 className='text-xl font-semibold text-zinc-900 sm:text-2xl dark:text-zinc-100'>
+            Birth Chart Compatibility
+          </h2>
+          <p className='mt-2 text-sm text-zinc-600 dark:text-zinc-300'>
+            Compare two birth charts from birthday, birth time, and birth place.
+          </p>
+
+          <div className='mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2'>
+            <div className='rounded-2xl bg-white/80 p-4 dark:bg-zinc-900/75'>
+              <p className='text-sm font-semibold text-zinc-800 dark:text-zinc-100'>
+                Person A
+              </p>
+              <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                <input
+                  type='date'
+                  value={chartOneBirthDate}
+                  onChange={(event) => setChartOneBirthDate(event.target.value)}
+                  className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100'
+                />
+                <input
+                  type='time'
+                  value={chartOneBirthTime}
+                  onChange={(event) => setChartOneBirthTime(event.target.value)}
+                  className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100'
+                />
+                <input
+                  type='text'
+                  value={chartOneBirthPlace}
+                  onChange={(event) =>
+                    setChartOneBirthPlace(event.target.value)
+                  }
+                  placeholder='City, Country'
+                  className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-500 focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100 dark:placeholder:text-zinc-400'
+                />
+              </div>
+              {firstGeocodedPlace.status === 'loading' ? (
+                <p className='mt-3 text-xs text-zinc-500 dark:text-zinc-400'>
+                  Resolving Person A place...
+                </p>
+              ) : null}
+              {firstGeocodedPlace.status === 'success' &&
+              firstGeocodedPlace.location ? (
+                <p className='mt-3 text-xs text-zinc-500 dark:text-zinc-400'>
+                  {firstGeocodedPlace.location.displayName} (
+                  {firstGeocodedPlace.location.latitude.toFixed(3)},{' '}
+                  {firstGeocodedPlace.location.longitude.toFixed(3)})
+                </p>
+              ) : null}
+            </div>
+
+            <div className='rounded-2xl bg-white/80 p-4 dark:bg-zinc-900/75'>
+              <p className='text-sm font-semibold text-zinc-800 dark:text-zinc-100'>
+                Person B
+              </p>
+              <div className='mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3'>
+                <input
+                  type='date'
+                  value={chartTwoBirthDate}
+                  onChange={(event) => setChartTwoBirthDate(event.target.value)}
+                  className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100'
+                />
+                <input
+                  type='time'
+                  value={chartTwoBirthTime}
+                  onChange={(event) => setChartTwoBirthTime(event.target.value)}
+                  className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100'
+                />
+                <input
+                  type='text'
+                  value={chartTwoBirthPlace}
+                  onChange={(event) =>
+                    setChartTwoBirthPlace(event.target.value)
+                  }
+                  placeholder='City, Country'
+                  className='tap-soft w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-500 focus:-translate-y-0.5 focus:ring-2 focus:ring-violet-400 dark:border-white/15 dark:bg-zinc-800/85 dark:text-zinc-100 dark:placeholder:text-zinc-400'
+                />
+              </div>
+              {secondGeocodedPlace.status === 'loading' ? (
+                <p className='mt-3 text-xs text-zinc-500 dark:text-zinc-400'>
+                  Resolving Person B place...
+                </p>
+              ) : null}
+              {secondGeocodedPlace.status === 'success' &&
+              secondGeocodedPlace.location ? (
+                <p className='mt-3 text-xs text-zinc-500 dark:text-zinc-400'>
+                  {secondGeocodedPlace.location.displayName} (
+                  {secondGeocodedPlace.location.latitude.toFixed(3)},{' '}
+                  {secondGeocodedPlace.location.longitude.toFixed(3)})
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {birthChartCompatibility ? (
+            <div className='fade-in-up mt-5 rounded-2xl border border-white/45 bg-white/80 p-4 dark:border-white/10 dark:bg-zinc-800/75'>
+              <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
+                <div>
+                  <p className='text-sm font-medium tracking-[0.14em] text-violet-700 dark:text-violet-300'>
+                    BIRTH CHART MATCH
+                  </p>
+                  <p className='mt-1 text-3xl font-semibold text-zinc-900 dark:text-zinc-100'>
+                    {birthChartCompatibility.percentage}%
+                  </p>
+                  <p className='mt-1 text-xs font-medium uppercase tracking-[0.14em] text-zinc-600 dark:text-zinc-300'>
+                    Match level: {birthChartCompatibility.level}
+                  </p>
+                </div>
+                <div className='relative h-3 w-full overflow-hidden rounded-full border border-white/55 bg-white/75 sm:max-w-sm dark:border-white/10 dark:bg-zinc-700/75'>
+                  <div
+                    className={`relative h-full rounded-full transition-[width] duration-700 ${birthChartCompatibility.barToneClass}`}
+                    style={{ width: `${birthChartCompatibility.percentage}%` }}
+                  >
+                    <div className='bar-shimmer' />
+                  </div>
+                </div>
+              </div>
+
+              <div className='mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2'>
+                <div className='rounded-xl bg-white/85 px-4 py-3 dark:bg-zinc-900/75'>
+                  <p className='text-sm font-semibold text-zinc-800 dark:text-zinc-100'>
+                    Person A Chart
+                  </p>
+                  <p className='mt-1 text-sm text-zinc-600 dark:text-zinc-300'>
+                    {zodiacSymbolBySign[birthChartCompatibility.chartOne.sun]}{' '}
+                    Sun {birthChartCompatibility.chartOne.sun} ·{' '}
+                    {zodiacSymbolBySign[birthChartCompatibility.chartOne.moon]}{' '}
+                    Moon {birthChartCompatibility.chartOne.moon} ·{' '}
+                    {
+                      zodiacSymbolBySign[
+                        birthChartCompatibility.chartOne.rising
+                      ]
+                    }{' '}
+                    Rising {birthChartCompatibility.chartOne.rising} ·{' '}
+                    {zodiacSymbolBySign[birthChartCompatibility.chartOne.venus]}{' '}
+                    Venus {birthChartCompatibility.chartOne.venus}
+                  </p>
+                </div>
+
+                <div className='rounded-xl bg-white/85 px-4 py-3 dark:bg-zinc-900/75'>
+                  <p className='text-sm font-semibold text-zinc-800 dark:text-zinc-100'>
+                    Person B Chart
+                  </p>
+                  <p className='mt-1 text-sm text-zinc-600 dark:text-zinc-300'>
+                    {zodiacSymbolBySign[birthChartCompatibility.chartTwo.sun]}{' '}
+                    Sun {birthChartCompatibility.chartTwo.sun} ·{' '}
+                    {zodiacSymbolBySign[birthChartCompatibility.chartTwo.moon]}{' '}
+                    Moon {birthChartCompatibility.chartTwo.moon} ·{' '}
+                    {
+                      zodiacSymbolBySign[
+                        birthChartCompatibility.chartTwo.rising
+                      ]
+                    }{' '}
+                    Rising {birthChartCompatibility.chartTwo.rising} ·{' '}
+                    {zodiacSymbolBySign[birthChartCompatibility.chartTwo.venus]}{' '}
+                    Venus {birthChartCompatibility.chartTwo.venus}
+                  </p>
+                </div>
+              </div>
+
+              <div className='mt-4 rounded-xl bg-white/85 px-4 py-3 dark:bg-zinc-900/75'>
+                <p className='text-sm text-zinc-700 dark:text-zinc-200'>
+                  <span className='font-medium'>Strengths:</span>{' '}
+                  {birthChartCompatibility.strengths}
+                </p>
+                <p className='mt-2 text-sm text-zinc-700 dark:text-zinc-200'>
+                  <span className='font-medium'>Weaknesses:</span>{' '}
+                  {birthChartCompatibility.weaknesses}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className='mt-4 text-sm text-zinc-600 dark:text-zinc-300'>
+              Fill all six inputs above to calculate compatibility between two
+              birth charts.
+            </p>
+          )}
+        </section>
 
         <section className='fade-in-up rounded-3xl border border-white/35 bg-white/60 p-5 shadow-sm backdrop-blur-md sm:p-6 dark:border-white/15 dark:bg-zinc-900/50'>
           <h2 className='text-xl font-semibold text-zinc-900 sm:text-2xl dark:text-zinc-100'>
