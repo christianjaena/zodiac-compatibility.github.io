@@ -10,7 +10,7 @@ type AdUnitProps = {
 export default function AdUnit({ slot, className }: Readonly<AdUnitProps>) {
   const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
   const isDevelopment = process.env.NODE_ENV !== 'production';
-  const adRef = useRef<HTMLElement | null>(null);
+  const adRef = useRef<HTMLModElement | null>(null);
 
   useEffect(() => {
     if (!adsenseId || !slot) {
