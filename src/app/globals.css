@@ -31,3 +31,134 @@ body {
   min-height: 100vh;
   text-rendering: optimizeLegibility;
 }
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatSlow {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes floatReverse {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, 12px, 0) scale(1.03);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes barShimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 550ms ease-out both;
+}
+
+.float-slow {
+  animation: floatSlow 11s ease-in-out infinite;
+}
+
+.float-reverse {
+  animation: floatReverse 13s ease-in-out infinite;
+}
+
+.cosmic-overlay {
+  background-image:
+    radial-gradient(
+      circle at 20% 22%,
+      color-mix(in srgb, var(--foreground) 8%, transparent) 0,
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 78% 72%,
+      color-mix(in srgb, var(--foreground) 7%, transparent) 0,
+      transparent 34%
+    );
+  opacity: 0.45;
+}
+
+.zodiac-card {
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease;
+}
+
+.tap-soft {
+  transition: transform 180ms ease;
+}
+
+@media (hover: hover) {
+  .zodiac-card:hover {
+    transform: translateY(-3px);
+  }
+}
+
+.match-row {
+  transition: transform 160ms ease;
+}
+
+.match-row:hover {
+  transform: translateX(2px);
+}
+
+.bar-shimmer {
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.2) 25%,
+    rgba(255, 255, 255, 0.5) 45%,
+    rgba(255, 255, 255, 0.2) 65%,
+    transparent 100%
+  );
+  animation: barShimmer 2.2s linear infinite;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .tap-soft:active {
+    transform: scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up,
+  .float-slow,
+  .float-reverse,
+  .zodiac-card,
+  .match-row,
+  .tap-soft,
+  .bar-shimmer {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
