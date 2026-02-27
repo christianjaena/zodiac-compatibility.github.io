@@ -1,5 +1,7 @@
 'use client';
 
+import Head from 'next/head';
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   Body,
@@ -682,6 +684,15 @@ const buildBirthChartCompatibility = (
 
 export default function Home() {
   const [firstSign, setFirstSign] = useState<string>(zodiacSigns[0]);
+
+  // SEO meta tags
+  const meta = {
+    title: 'Zodiac Compatibility – Astrology Match & Birth Charts',
+    description:
+      'Explore zodiac sign compatibility, birth charts, and astrology insights. Find your best matches, generate birth charts, and discover relationship tips.',
+    keywords:
+      'zodiac compatibility, astrology, birth chart, horoscope, relationship, sun sign, moon sign, rising sign, venus, match, zodiac signs'
+  };
   const [secondSign, setSecondSign] = useState<string>(zodiacSigns[1]);
   const [singleBirthDate, setSingleBirthDate] = useState<string>('');
   const [singleBirthTime, setSingleBirthTime] = useState<string>('');
@@ -808,15 +819,15 @@ export default function Home() {
     const compatibilityLevel = getCompatibilityLevel(percentage);
 
     return {
-      firstEntry,
-      secondEntry,
-      firstRank,
-      secondRank,
       percentage,
       level: compatibilityLevel.label,
       barToneClass: compatibilityLevel.barToneClass,
       strengths: getRelationshipStrength(averageRank, rankGap),
-      weaknesses: getRelationshipWeakness(averageRank, rankGap)
+      weaknesses: getRelationshipWeakness(averageRank, rankGap),
+      firstEntry,
+      secondEntry,
+      firstRank,
+      secondRank
     };
   }, [firstSign, secondSign]);
 
