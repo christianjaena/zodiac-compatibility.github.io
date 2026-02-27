@@ -37,13 +37,28 @@ export default function RootLayout({
       >
         <div className='flex-1 flex flex-col'>{children}</div>
         <footer className='w-full border-t border-white/15 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md mt-12 py-6 mt-auto'>
-          <div className='max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between px-4 gap-2 text-sm text-zinc-700 dark:text-zinc-300'>
-            <div className='flex gap-4 mb-2 sm:mb-0'>
-              <Link href='/' className='hover:text-violet-700 dark:hover:text-violet-300 transition'>Home</Link>
-              <Link href='/about-us' className='hover:text-violet-700 dark:hover:text-violet-300 transition'>About Us</Link>
-              <Link href='/contact-us' className='hover:text-violet-700 dark:hover:text-violet-300 transition'>Contact Us</Link>
+          <div className='max-w-2xl mx-auto flex flex-col items-center px-4 text-sm text-zinc-700 dark:text-zinc-300'>
+            <div className='flex flex-row items-center gap-7 mb-3'>
+              <Link
+                href='/'
+                className='hover:text-violet-700 dark:hover:text-violet-300 transition'
+              >
+                Home
+              </Link>
+              <Link
+                href='/about-us'
+                className='hover:text-violet-700 dark:hover:text-violet-300 transition'
+              >
+                About Us
+              </Link>
+              <Link
+                href='/contact-us'
+                className='hover:text-violet-700 dark:hover:text-violet-300 transition'
+              >
+                Contact Us
+              </Link>
             </div>
-            <div className='text-xs text-zinc-400'>
+            <div className='text-xs text-zinc-400 text-center'>
               &copy; {new Date().getFullYear()} Zodiac Compatibility
             </div>
           </div>
